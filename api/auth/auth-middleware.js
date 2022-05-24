@@ -1,3 +1,5 @@
+const Users = require('../users/users-model');
+const {passwordSchema, usernameSchema} = require('./auth-yupSchemas');
 /*
   If the user does not have a session saved in the server
 
@@ -6,8 +8,12 @@
     "message": "You shall not pass!"
   }
 */
-function restricted() {
-
+function restricted(req, res, next) {
+  if (req.session.user) {
+    next();
+  } else {
+    next({status: 401, message: "You shall not pass!"})
+  }
 }
 
 /*
@@ -18,8 +24,28 @@ function restricted() {
     "message": "Username taken"
   }
 */
-function checkUsernameFree() {
+function checkUsernameFree(req, res, next) {
+  usernameSchema.validate(req.body, {
+    strict: true,
+    stripUnknown: true
+  })
+  .then( validated => {
+    const {username} = validated;
 
+    Users.findBy({username})
+      .then( usersFound => {
+        if  (usersFound.length > 0) {
+          next({status: 422, message: "Username taken"});
+          return;
+        }
+        req.body = validated;
+        next();
+      })
+      .catch(next)
+  })
+  .catch(err => {
+    next({status: 422, message: err.message});
+  })
 }
 
 /*
@@ -30,8 +56,28 @@ function checkUsernameFree() {
     "message": "Invalid credentials"
   }
 */
-function checkUsernameExists() {
+function checkUsernameExists(req, res, next) {
+  usernameSchema.validate(req.body, {
+    strict: true,
+    stripUnknown: true
+  })
+  .then( validated => {
+    const {username} = validated;
 
+    Users.findBy({username}).first()
+      .then( userFound => {
+        if  (!userFound) {
+          next({status: 401, message: "Invalid credentials"});
+        }
+        req.body = validated;
+        req.body.user = userFound;
+        next();
+      })
+      .catch(next)
+  })
+  .catch(err => {
+    next({status: 401, message: err.message});
+  })
 }
 
 /*
@@ -42,8 +88,25 @@ function checkUsernameExists() {
     "message": "Password must be longer than 3 chars"
   }
 */
-function checkPasswordLength() {
-
+function checkPasswordLength(req, res, next) {
+  passwordSchema.validate(req.body,
+    {
+      strict: true,
+      stripUnknown: true
+    })
+    .then( validated => {
+        req.body = validated;
+        next();
+    })
+    .catch(err => {
+      next({status: 422, message: err.message})
+    });
 }
 
 // Don't forget to add these to the `exports` object so they can be required in other modules
+module.exports = {
+  restricted,
+  checkUsernameFree,
+  checkUsernameExists,
+  checkPasswordLength
+}
